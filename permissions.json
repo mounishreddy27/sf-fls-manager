@@ -1,0 +1,20 @@
+[
+  {
+    "field": "Account.New_Field__c",
+    "sobject": "Account",
+    "access_rules": {
+      "HR_Permissions": "Edit",
+      "Interviewer_Permissions": "Read",
+      "Intern_PS": "None"
+    }
+  },
+  {
+    "field": "Account.Active__c",
+    "sobject": "Account",
+    "access_rules": {
+      "Interviewer_Permissions": "Read",
+      "HR_Permissions": "Edit",
+      "X00ex00000018ozh_128_09_04_12_1":"None"
+    }
+  }
+]
