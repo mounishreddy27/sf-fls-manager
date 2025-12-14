@@ -24,7 +24,7 @@ Manage Salesforce Field-Level Security (FLS) using JSON configuration. Features 
 
 1.  **Clone the repo:**
     ```bash
-    git clone [https://github.com/mounishreddy27/sf-fls-manager.git](https://github.com/mounishreddy27/sf-fls-manager.git)
+    git clone https://github.com/mounishreddy27/sf-fls-manager.git
     cd sf-fls-manager
     ```
 
@@ -63,6 +63,11 @@ Manage Salesforce Field-Level Security (FLS) using JSON configuration. Features 
 * **Edit:** Grants `PermissionsRead=true` and `PermissionsEdit=true`.
 * **Read:** Grants `PermissionsRead=true` and `PermissionsEdit=false`.
 * **None:** Grants `PermissionsRead=false` and `PermissionsEdit=false`.
+
+## ❓ Troubleshooting
+* **Error: Authentication Failed / CLI Error**
+  * If the script fails to log in, your Refresh Token may have expired.
+  * **Fix:** Press `Ctrl+Shift+P` in VS Code and run **"SFDX: Authorize an Org"** to re-authenticate (or run `sf org login web` in the terminal).
 
 ## 🛡️ License
 MIT License
