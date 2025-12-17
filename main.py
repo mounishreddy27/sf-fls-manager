@@ -1,12 +1,33 @@
 import json
 import os
 import sys
+import logging
 from simple_salesforce import Salesforce
 from cli_helper import get_cli_session
 
-# CONFIG_FILE = 'permissions.json'
-CONFIG_FILE = r"H:\_gen_d\permissions.json"
+# CONFIGURATION
+CONFIG_FILE = 'permissions.json'
 TARGET_ORG = 'sflwc'
+LOG_FILE = 'fls_patcher.log'
+
+# ==========================================
+# 1. SETUP LOGGING
+# ==========================================
+# Create a custom logger
+logger = logging.getLogger("FLS_Patcher")
+logger.setLevel(logging.INFO)
+
+# A. File Handler (Detailed with Timestamps)
+file_handler = logging.FileHandler(LOG_FILE, mode='w', encoding='utf-8')
+file_fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_fmt)
+logger.addHandler(file_handler)
+
+# B. Console Handler (Clean Output)
+console_handler = logging.StreamHandler(sys.stdout)
+console_fmt = logging.Formatter('%(message)s')
+console_handler.setFormatter(console_fmt)
+logger.addHandler(console_handler)
 
 def get_boolean_perms(access_level):
     access_level = access_level.lower()
@@ -18,46 +39,45 @@ def get_boolean_perms(access_level):
         return {'PermissionsRead': False, 'PermissionsEdit': False}
 
 def get_salesforce_connection():
-    print("Attempting login via Salesforce CLI...")
-    # 1. Check if the variable has a real value
+    logger.info("Attempting login via Salesforce CLI...")
     if TARGET_ORG:
-        # If yes, pass it explicitly
         token, instance = get_cli_session(TARGET_ORG)
     else:
-        # If no, uses the default org
         token, instance = get_cli_session()
+    
     sf = Salesforce(instance_url=instance, session_id=token)
-    print(f"SUCCESS: Logged in via CLI ({instance})")
+    logger.info(f"SUCCESS: Logged in via CLI ({instance})")
     return sf
 
-# Helper to chunk into groups of 200 (API Limit)
 def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
 def main():
-    print("--- Salesforce Permission Set Patcher ---")
+    logger.info("--- Salesforce Permission Set Patcher ---")
 
     sf = get_salesforce_connection()
+    
+    # Use RAW Session for stability
+    session = sf.session
 
-    # Construct the FULL URL
-    # sf.base_url already ends with a slash '/'
+    # Construct the FULL URL for Standard API
     full_url = sf.base_url + "composite/sobjects"
-    print(f"Using Composite SObject URL: {full_url}\n")
+    logger.info(f"Using Composite SObject URL: {full_url}\n")
+
     # 1. Load Config
     try:
         with open(CONFIG_FILE, 'r') as f:
             raw_configs = json.load(f)
 
-        # DEDUPLICATION LOGIC
-        # Create a dictionary to remove duplicates based on the "field" name
+        # Deduplication
         unique_map = {item['field']: item for item in raw_configs}
         field_configs = list(unique_map.values())
 
         if len(raw_configs) != len(field_configs):
-            print(f"⚠️ Removed {len(raw_configs) - len(field_configs)} duplicate fields from input.")
+            logger.warning(f"⚠️ Removed {len(raw_configs) - len(field_configs)} duplicate fields from input.")
 
     except FileNotFoundError:
-        print(f"Error: {CONFIG_FILE} not found.")
+        logger.error(f"Error: {CONFIG_FILE} not found.")
         return
 
     # 2. Preparation - Collect Names & Fields
@@ -69,21 +89,22 @@ def main():
         all_pset_names.update(item['access_rules'].keys())
 
     if not all_pset_names:
-        print("No permission sets found in config.")
+        logger.error("No permission sets found in config.")
         return
 
     # 3. Bulk Query - Permission Set IDs
-    print(f"Resolving IDs for {len(all_pset_names)} Permission Sets...")
+    logger.info(f"Resolving IDs for {len(all_pset_names)} Permission Sets...")
     ps_name_str = "('" + "','".join(all_pset_names) + "')"
     ps_query = f"SELECT Id, Name FROM PermissionSet WHERE Name IN {ps_name_str}"
+    
     ps_records = sf.query(ps_query)['records']
     pset_name_to_id = {rec['Name']: rec['Id'] for rec in ps_records}
     found_ids = list(pset_name_to_id.values())
 
     # 4. Bulk Query - Existing Field Permissions
-    print(f"Snapshotting existing permissions for {len(all_target_fields)} fields...")
+    logger.info(f"Snapshotting existing permissions for {len(all_target_fields)} fields...")
     if not found_ids:
-        print("No valid Permission Sets found. Exiting.")
+        logger.error("No valid Permission Sets found. Exiting.")
         return
 
     ids_in_clause = "('" + "','".join(found_ids) + "')"
@@ -104,11 +125,10 @@ def main():
         existing_perms_map[key] = rec
 
     # 5. Process Logic
-    # Lists to hold our "bulk" changes
     update_batch = []
     create_batch = []
 
-    print("\n--- Processing Rules ---")
+    logger.info("\n--- Processing Rules ---")
     
     for item in field_configs:
         field = item['field']
@@ -117,7 +137,7 @@ def main():
 
         for pset_name, access_level in rules.items():
             if pset_name not in pset_name_to_id:
-                print(f"  [!] Skipped {pset_name}: Not found in Org.")
+                logger.warning(f"  [!] Skipped {pset_name}: Not found in Org.")
                 continue
                 
             pset_id = pset_name_to_id[pset_name]
@@ -129,22 +149,19 @@ def main():
                 
                 # Check if change is needed
                 if (current_rec['PermissionsRead'] != target_perms['PermissionsRead']) or \
-                    (current_rec['PermissionsEdit'] != target_perms['PermissionsEdit']):
+                   (current_rec['PermissionsEdit'] != target_perms['PermissionsEdit']):
                     
-                    # ADD TO LIST (Don't update yet)
                     update_batch.append({
                         "attributes": {"type": "FieldPermissions"},
                         "Id": current_rec['Id'],
                         "PermissionsRead": target_perms['PermissionsRead'],
                         "PermissionsEdit": target_perms['PermissionsEdit']
                     })
-                    print(f"  [*] Queued Update: {pset_name} on {field}")
+                    logger.info(f"  [*] Queued Update: {pset_name} on {field}")
                 else:
-                    # 2. No change needed (Values are already correct)
-                    print(f"  [=] No change needed for {pset_name} on {field}")
+                    logger.info(f"  [=] No change needed for {pset_name} on {field}")
             else:
                 if target_perms['PermissionsRead'] is True:
-                    # ADD TO CREATE LIST
                     create_batch.append({
                         "attributes": {"type": "FieldPermissions"},
                         "ParentId": pset_id,
@@ -153,113 +170,84 @@ def main():
                         "PermissionsRead": target_perms['PermissionsRead'],
                         "PermissionsEdit": target_perms['PermissionsEdit']
                     })
-                    print(f"  [+] Queued Create: {pset_name} on {field}")
-                    print(f"  [+] Granted {pset_name} on {field}")
+                    logger.info(f"  [+] Queued Create: {pset_name} on {field}")
                 else:
-                    print(f"  [-] Skipped {pset_name} (Access is None and no record exists)")
+                    logger.info(f"  [-] Skipped {pset_name} (Access is None and no record exists)")
 
-    session = sf.session
-    # 1. Handle Updates (Using Composite SObject Collections)
-    # This endpoint allows up to 200 updates per call
+    # 6. Execute Updates (PATCH)
     if update_batch:
-        print(f"\n--- Committing {len(update_batch)} Updates ---")
+        logger.info(f"\n--- Committing {len(update_batch)} Updates ---")
 
         for batch in chunker(update_batch, 200):
             try:
-                # 2. USE RAW SESSION (Version Agnostic)
+                # Use RAW SESSION (Bypasses 'SFType' errors)
                 response = session.request(
                     method='PATCH',
                     url=full_url,
                     json={'allOrNone': False, 'records': batch},
-                    headers=sf.headers # CRITICAL: Must pass auth headers manually
+                    headers=sf.headers
                 )
                 
                 if response.status_code != 200:
-                    print(f"  [!] HTTP {response.status_code}: {response.text}")
+                    logger.error(f"  [!] HTTP {response.status_code}: {response.text}")
                     continue
 
-                for res in response.json():
+                results = response.json()
+                for res in results:
                     if res['success']:
-                        print(f"  [✓] Updated: {res['id']}")
+                        logger.info(f"  [✓] Updated: {res['id']}")
                     else:
-                        print(f"  [!] Error: {res['errors']}")
-                # print(f"DEBUG CHECK: Type of sf is {type(sf)}")
-                # # We use sf.request directly to hit the Collections API
-                # response = sf.request(
-                #     method='PATCH', 
-                #     url="https://diksuchi-dev-ed.develop.my.salesforce.com/services/data/v63.0/composite/sobjects", 
-                #     json={'allOrNone': False, 'records': batch}
-                # )
-                
-                # # Check for errors in the response list
-                # for res in response:
-                #     if not res['success']:
-                #         print(f"  [!] Error updating {res['id']}: {res['errors']}")
-                #     else:
-                #         print(f"  [✓] Updated {res['id']}")
+                        logger.error(f"  [!] Error: {res['errors']}")
                         
             except Exception as e:
-                print(f"  [!] Critical Batch Error: {e}")
+                logger.critical(f"  [!] Critical Batch Error: {e}")
 
-    # 2. Handle Creates
-    # Simple-Salesforce 'sf.bulk' is great for inserts if you have many
-    # Or use the same composite/sobjects POST method for smaller batches
+    # 7. Execute Creates (POST)
     if create_batch:
-        print(f"\n--- Committing {len(create_batch)} Creates ---")
+        logger.info(f"\n--- Committing {len(create_batch)} Creates ---")
+        
         for batch in chunker(create_batch, 200):
             try:
-                # 2. USE RAW SESSION (Version Agnostic)
+                # Use RAW SESSION (Bypasses 'SFType' errors)
                 response = session.request(
                     method='POST',
                     url=full_url,
                     json={'allOrNone': False, 'records': batch},
-                    headers=sf.headers # CRITICAL: Must pass auth headers manually
+                    headers=sf.headers
                 )
                 
                 if response.status_code != 200:
-                    print(f"  [!] HTTP {response.status_code}: {response.text}")
+                    logger.error(f"  [!] HTTP {response.status_code}: {response.text}")
                     continue
 
-                for res in response.json():
+                results = response.json()
+                for res in results:
                     if res['success']:
-                        print(f"  [✓] Created: {res['id']}")
+                        logger.info(f"  [✓] Created: {res['id']}")
                     else:
-                        print(f"  [!] Error: {res['errors']}")
-                # print(f"DEBUG CHECK: Type of sf is {type(sf)}")
-                # response = sf.request(
-                #     method='POST', 
-                #     url="https://diksuchi-dev-ed.develop.my.salesforce.com/services/data/v63.0/composite/sobjects", 
-                #     json={'allOrNone': False, 'records': batch}
-                # )
-                # for res in response:
-                #     if not res['success']:
-                #         print(f"  [!] Error creating: {res['errors']}")
-                #     else:
-                #         print(f"  [✓] Created {res['id']}")
+                        logger.error(f"  [!] Error: {res['errors']}")
+
             except Exception as e:
-                print(f"  [!] Critical Create Error: {e}")
+                logger.critical(f"  [!] Critical Create Error: {e}")
     
-    print("\n--- Completed ---")
-    print("\n==================================")
-    print(" 📊 API USAGE REPORT")
-    print("==================================")
+    logger.info("\n--- Completed ---")
+    logger.info("\n==================================")
+    logger.info(" 📊 API USAGE REPORT")
+    logger.info("==================================")
     
     try:
-        # Use the official method to fetch limits
         limits_data = sf.limits()
-        
-        # Extract specific API metrics
         api_requests = limits_data.get('DailyApiRequests', {})
         max_calls = api_requests.get('Max', 0)
         remaining = api_requests.get('Remaining', 0)
         used_today = max_calls - remaining
 
-        print(f"Daily Limit:   {max_calls}")
-        print(f"Remaining:     {remaining}")
-        print(f"Used Today:    {used_today}")
+        logger.info(f"Daily Limit:   {max_calls}")
+        logger.info(f"Remaining:     {remaining}")
+        logger.info(f"Used Today:    {used_today}")
         
     except Exception as e:
-        print(f"Could not fetch limits: {e}")
+        logger.error(f"Could not fetch limits: {e}")
 
 if __name__ == "__main__":
     main()
