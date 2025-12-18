@@ -7,11 +7,11 @@ from cli_helper import get_cli_session
 
 # CONFIGURATION
 CONFIG_FILE = 'permissions.json'
-TARGET_ORG = 'sflwc'
+TARGET_ORG = 'alias'
 LOG_FILE = 'fls_patcher.log'
 
 # ==========================================
-# 1. SETUP LOGGING
+# SETUP LOGGING
 # ==========================================
 # Create a custom logger
 logger = logging.getLogger("FLS_Patcher")
