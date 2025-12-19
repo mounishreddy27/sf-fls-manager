@@ -40,19 +40,22 @@ Manage Salesforce Field-Level Security (FLS) using JSON configuration. Features 
 
 ## ⚙️ Usage
 
-1.  **Define your rules** in `permissions.json`:
-    ```json
-    [
-      {
-        "field": "Account.Active__c",
-        "sobject": "Account",
-        "access_rules": {
-          "Permission_Set_Name_A": "Edit",
-          "Permission_Set_Name_B": "Read"
-        }
-      }
-    ]
-    ```
+1. **Define your rules** in `permissions.json`:
+   You can assign permissions to **Profiles** (use the standard Profile Name e.g., System Administrator) or **Permission Sets** (use either their API Name or Label).
+
+   ```json
+   [
+     {
+       "sobject": "Account",
+       "field": "Account.Active__c",
+       "access_rules": {
+         "System Administrator": "Edit",     // Profile Name
+         "HR_Manager_Access": "Read",        // Permission Set API Name (Recommended)
+         "Marketing Team": "Edit"            // Permission Set Label
+       }
+     }
+   ]
+   ```
 
 2.  **Run the script:**
     ```bash

@@ -92,13 +92,60 @@ def main():
         logger.error("No permission sets found in config.")
         return
 
-    # 3. Bulk Query - Permission Set IDs
-    logger.info(f"Resolving IDs for {len(all_pset_names)} Permission Sets...")
-    ps_name_str = "('" + "','".join(all_pset_names) + "')"
-    ps_query = f"SELECT Id, Name FROM PermissionSet WHERE Name IN {ps_name_str}"
+    # 3. Bulk Query - Smart ID Resolution (API Name, Label, & Profile)
+    logger.info(f"Resolving IDs for {len(all_pset_names)} names (Profiles & Permission Sets)...")
+    
+    safe_names = [x.replace("'", "\\'") for x in all_pset_names]
+    name_clause = "('" + "','".join(safe_names) + "')"
+
+    # Query matching API Name, Label, or Profile Name
+    ps_query = f"""
+        SELECT Id, Name, Label, Profile.Name, IsOwnedByProfile 
+        FROM PermissionSet 
+        WHERE Name IN {name_clause} 
+           OR Label IN {name_clause}
+           OR Profile.Name IN {name_clause}
+    """
     
     ps_records = sf.query(ps_query)['records']
-    pset_name_to_id = {rec['Name']: rec['Id'] for rec in ps_records}
+    pset_name_to_id = {}
+    
+    # Helper to track duplicates (Two perm sets with same Label?)
+    found_labels = {} 
+
+    for rec in ps_records:
+        ps_id = rec['Id']
+        api_name = rec['Name']
+        label = rec['Label']
+        profile_rec = rec.get('Profile') 
+        
+        # 1. Match against PROFILE Name (Priority 1)
+        if rec['IsOwnedByProfile'] and profile_rec:
+            p_name = profile_rec['Name']
+            if p_name in all_pset_names:
+                pset_name_to_id[p_name] = ps_id
+        
+        # 2. Match against API Name (Priority 2)
+        if api_name in all_pset_names:
+            pset_name_to_id[api_name] = ps_id
+
+        # 3. Match against LABEL (Priority 3 - User Friendly)
+        if label in all_pset_names:
+            # Check for Ambiguity
+            if label in found_labels and found_labels[label] != ps_id:
+                logger.warning(f"  [!] AMBIGUITY: Multiple sets share the label '{label}'. Using the first one found.")
+            else:
+                pset_name_to_id[label] = ps_id
+                found_labels[label] = ps_id
+
+    # Report results
+    logger.info(f"  [+] Resolved {len(pset_name_to_id)} out of {len(all_pset_names)} targets.")
+    
+    missing = all_pset_names - set(pset_name_to_id.keys())
+    if missing:
+        logger.warning(f"  [!] MISSING: Could not find these in Org: {missing}")
+        logger.warning("      (Check for typos. If using Permission Sets, try the API Name.)")
+        
     found_ids = list(pset_name_to_id.values())
 
     # 4. Bulk Query - Existing Field Permissions

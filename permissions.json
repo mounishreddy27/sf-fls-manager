@@ -5,7 +5,8 @@
     "access_rules": {
       "HR_Permissions": "Edit",
       "Interviewer_Permissions": "Read",
-      "Intern_PS": "None"
+      "Intern_PS": "None",
+      "System Administrator": "Read"
     }
   },
   {
