@@ -21,7 +21,7 @@ Manage Salesforce Field-Level Security (FLS) using JSON configuration. Features 
         3. Select your login URL (Production/Sandbox).
         4. **Important:** When asked, enter an **Alias** (e.g., `MySandbox`).
 
-## 2. Salesforce User Permissions
+### 2. Salesforce User Permissions
 The user running the script must have **System Administrator** access or a profile/permission set with the following specific permissions:
 
 * **API Enabled:** Required to connect via REST API.
