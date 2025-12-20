@@ -11,6 +11,7 @@ Manage Salesforce Field-Level Security (FLS) using JSON configuration. Features 
 
 ## 📦 Prerequisites
 
+### 1. Environment & Tools
 1.  **Python 3.x**
 2.  **Salesforce Extensions for VS Code**
     * You likely already have this installed.
@@ -19,6 +20,14 @@ Manage Salesforce Field-Level Security (FLS) using JSON configuration. Features 
         2. Type **"SFDX: Authorize an Org"**.
         3. Select your login URL (Production/Sandbox).
         4. **Important:** When asked, enter an **Alias** (e.g., `MySandbox`).
+
+## 2. Salesforce User Permissions
+The user running the script must have **System Administrator** access or a profile/permission set with the following specific permissions:
+
+* **API Enabled:** Required to connect via REST API.
+* **View Setup and Configuration:** 
+* **Manage Profiles and Permission Sets:** Required to provide/update permissions.
+    *Note: Standard Salesforce security rules apply. Without this administrative permission, the API will reject updates with an `INSUFFICIENT_ACCESS` error.*
 
 ## ⚙️ Installation & Setup
 
