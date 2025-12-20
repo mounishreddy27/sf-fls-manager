@@ -27,7 +27,7 @@ The user running the script must have **System Administrator** access or a profi
 * **API Enabled:** Required to connect via REST API.
 * **View Setup and Configuration:** 
 * **Manage Profiles and Permission Sets:** Required to provide/update permissions.
-    *Note: Standard Salesforce security rules apply. Without this administrative permission, the API will reject updates with an `INSUFFICIENT_ACCESS` error.*
+    * *Note: Standard Salesforce security rules apply. Without this administrative permission, the API will reject updates with an `INSUFFICIENT_ACCESS` error.*
 
 ## ⚙️ Installation & Setup
 
