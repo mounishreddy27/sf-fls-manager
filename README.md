@@ -55,7 +55,6 @@ The user running the script must have **System Administrator** access or a profi
    ```json
    [
      {
-       "sobject": "Account",
        "field": "Account.Active__c",
        "access_rules": {
          "System Administrator": "Edit",     // Profile Name
